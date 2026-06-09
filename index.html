@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="id" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistem Antrian Digital</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  
+  
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@600;700&amp;display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+    .marquee { animation: marquee 20s linear infinite; }
+    @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 20px rgba(59,130,246,0.3); } 50% { box-shadow: 0 0 40px rgba(59,130,246,0.6); } }
+    .pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+    @keyframes slide-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .slide-in { animation: slide-in 0.4s ease-out; }
+    .tab-active { background: #1e40af; color: white; }
+    .tab-inactive { background: #1e293b; color: #94a3b8; }
+    .thermal-ticket { width: 58mm; font-family: 'JetBrains Mono', monospace; }
+    @media print { .no-print { display: none !important; } .print-only { display: block !important; } }
+  </style>
+  <style>body { box-sizing: border-box; }</style>
+ 
+<script>
+window.elementSdk={
+ config:{},
+ init:function(o){this.config=o?.defaultConfig||{}; if(o&&o.onConfigChange){o.onConfigChange(this.config);} },
+ setConfig:function(v){Object.assign(this.config,v);}
+};
+
+window.dataSdk={
+ async init(handler){
+   this.handler=handler;
+   const data=JSON.parse(localStorage.getItem('spmb_queue_data')||'[]');
+   if(handler&&handler.onDataChanged) handler.onDataChanged(data);
+   return {isOk:true};
+ },
+ _save(data){
+   localStorage.setItem('spmb_queue_data',JSON.stringify(data));
+   if(this.handler&&this.handler.onDataChanged) this.handler.onDataChanged(data);
+ },
+ async create(obj){
+   const data=JSON.parse(localStorage.getItem('spmb_queue_data')||'[]');
+   obj.id=Date.now()+Math.random();
+   data.push(obj);
+   this._save(data);
+   return {isOk:true};
+ },
+ async update(obj){
+   let data=JSON.parse(localStorage.getItem('spmb_queue_data')||'[]');
+   data=data.map(x=>x.id===obj.id?obj:x);
+   this._save(data);
+   return {isOk:true};
+ },
+ async delete(obj){
+   let data=JSON.parse(localStorage.getItem('spmb_queue_data')||'[]');
+   data=data.filter(x=>x.id!==obj.id);
+   this._save(data);
+   return {isOk:true};
+ }
+};
+</script>
+
+</head>
+ <body class="h-full bg-slate-900 text-white overflow-auto">
+  <div id="app" class="h-full w-full flex flex-col"><!-- Navigation Tabs -->
+   <nav class="no-print flex items-center gap-1 p-2 bg-slate-950 border-b border-slate-700 flex-shrink-0"><button onclick="switchTab('kiosk')" id="tab-kiosk" class="tab-active px-4 py-2 rounded-lg text-sm font-semibold transition-all"> <span class="flex items-center gap-2"><i data-lucide="ticket" class="w-4 h-4"></i> Kiosk</span> </button> <button onclick="switchTab('display')" id="tab-display" class="tab-inactive px-4 py-2 rounded-lg text-sm font-semibold transition-all"> <span class="flex items-center gap-2"><i data-lucide="monitor" class="w-4 h-4"></i> Display</span> </button> <button onclick="switchTab('counter')" id="tab-counter" class="tab-inactive px-4 py-2 rounded-lg text-sm font-semibold transition-all"> <span class="flex items-center gap-2"><i data-lucide="user" class="w-4 h-4"></i> Loket</span> </button> <button onclick="switchTab('admin')" id="tab-admin" class="tab-inactive px-4 py-2 rounded-lg text-sm font-semibold transition-all"> <span class="flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-4 h-4"></i> Admin</span> </button>
+   </nav><!-- KIOSK TAB -->
+   <div id="panel-kiosk" class="flex-1 flex flex-col items-center justify-center p-6 gap-6 overflow-auto">
+    <div id="kiosk-step-1" class="w-full flex flex-col items-center gap-6">
+     <div class="text-center mb-4">
+      <h1 id="kiosk-title" class="text-5xl font-bold text-blue-400">WEB LAYANAN SPMB 2026</h1>
+      <p id="school-name" class="text-slate-300 text-3xl font-bold mt-3">SMA NEGERI 3 LUWU</p>
+      <p class="text-slate-400 mt-3 text-lg">Silakan ambil nomor antrian Anda</p>
+     </div>
+     <div id="kiosk-categories" class="grid grid-cols-2 gap-4 max-w-lg w-full"><!-- Categories rendered dynamically -->
+     </div>
+    </div>
+    <div id="kiosk-step-2" class="hidden slide-in w-full max-w-md bg-slate-800 border border-blue-500 rounded-2xl p-6">
+     <h2 class="text-xl font-bold text-blue-400 mb-4">Data Pengunjung</h2>
+     <div class="space-y-3">
+      <div>
+       <label class="block text-sm text-slate-400 mb-1">Nama Lengkap</label> <input id="form-name" type="text" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white" placeholder="Masukkan nama">
+      </div>
+      <div>
+       <label class="block text-sm text-slate-400 mb-1">No HP/WA</label> <input id="form-phone" type="tel" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white" placeholder="Contoh: 081234567890">
+      </div>
+      <div>
+       <label class="block text-sm text-slate-400 mb-1">Alamat</label> <input id="form-address" type="text" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white" placeholder="Masukkan alamat">
+      </div>
+      <div>
+       <label class="block text-sm text-slate-400 mb-1">Asal Sekolah</label> <input id="form-school" type="text" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white" placeholder="Masukkan asal sekolah">
+      </div>
+     </div>
+     <div id="form-error" class="hidden mt-3 text-red-400 text-sm bg-red-900/30 px-3 py-2 rounded-lg"></div>
+     <div class="flex gap-2 mt-4">
+      <button onclick="backToCategories()" class="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg font-semibold transition-all">Kembali</button> <button onclick="submitVisitorData()" class="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-semibold transition-all">Lanjut</button>
+     </div>
+    </div>
+    <div id="kiosk-step-3" class="hidden slide-in text-center bg-slate-800 border border-blue-500 rounded-2xl p-8 max-w-sm w-full">
+     <p class="text-slate-400 text-sm">Nomor Antrian Anda</p>
+     <p id="kiosk-ticket-number" class="mono text-6xl font-bold text-blue-400 my-4"></p>
+     <p id="kiosk-ticket-category" class="text-slate-300 mb-4"></p>
+     <p id="kiosk-ticket-name" class="text-sm text-slate-400 mb-4"></p><button onclick="printTicket()" class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-xl font-semibold flex items-center gap-2 mx-auto transition-all"> <i data-lucide="printer" class="w-5 h-5"></i> Cetak Tiket </button>
+    </div><!-- Thermal Ticket Preview Modal -->
+    <div id="ticket-preview-modal" class="hidden fixed inset-0 no-print bg-black/80 flex items-center justify-center z-50">
+     <div class="bg-white rounded-2xl p-8 shadow-2xl max-w-xs w-full">
+      <div class="thermal-ticket text-black text-center space-y-1">
+       <p id="preview-inst" class="text-sm font-bold">WEB LAYANAN SPMB 2026</p>
+       <p id="preview-school" class="text-xs">SMA NEGERI 3 LUWU</p>
+       <div class="border-t border-dashed border-black my-2"></div>
+       <p class="text-xs">Nomor Antrian</p>
+       <p id="preview-number" class="mono text-4xl font-bold my-2"></p>
+       <p id="preview-cat" class="text-xs font-semibold"></p>
+       <p id="preview-name" class="text-xs mt-1"></p>
+       <p id="preview-time" class="text-xs text-gray-600"></p>
+       <div class="border-t border-dashed border-black my-2"></div>
+       <p class="text-xs">Terima kasih, harap menunggu</p>
+      </div>
+      <div class="mt-6 flex flex-col gap-2">
+       <p id="preview-countdown" class="text-center text-slate-600 font-semibold">Ditampilkan dalam: <span id="countdown-num">15</span>s</p><button onclick="skipPreview()" class="bg-slate-300 hover:bg-slate-400 text-black px-4 py-2 rounded-lg font-semibold text-sm transition-all">Cetak Sekarang</button>
+      </div>
+     </div>
+    </div><!-- Hidden print area -->
+    <div id="print-area" class="hidden print-only thermal-ticket p-2 text-black bg-white text-center">
+     <p id="print-inst" class="text-xs font-bold">Layanan SPMB 2026</p>
+     <p class="text-xs">SMA NEGERI 3 LUWU</p>
+     <hr class="my-1 border-dashed border-black">
+     <p class="text-xs">Nomor Antrian</p>
+     <p id="print-number" class="text-3xl font-bold my-2"></p>
+     <p id="print-cat" class="text-xs"></p>
+     <p id="print-name" class="text-xs"></p>
+     <p id="print-time" class="text-xs mt-1"></p>
+     <hr class="my-1 border-dashed border-black">
+     <p class="text-xs">Terima kasih, harap menunggu</p>
+    </div>
+   </div><!-- DISPLAY TAB -->
+   <div id="panel-display" class="hidden flex-1 flex flex-col">
+    <div class="flex-1 flex flex-col items-center justify-center p-8 gap-6">
+     <h2 id="display-title" class="text-2xl font-bold text-slate-300">Kantor Pelayanan Terpadu</h2>
+     <div id="display-current" class="bg-slate-800 border-2 border-blue-500 rounded-3xl p-10 text-center pulse-glow min-w-[300px]">
+      <p class="text-slate-400 text-lg">Nomor Antrian</p>
+      <p id="display-number" class="mono text-8xl font-bold text-blue-400 my-4">---</p>
+      <p id="display-counter" class="text-xl text-slate-300">Menunggu...</p>
+     </div>
+     <div id="display-history" class="flex gap-3 flex-wrap justify-center max-w-xl"><!-- Recent calls -->
+     </div>
+    </div>
+    <div class="bg-slate-950 border-t border-slate-700 py-3 px-6 overflow-hidden flex-shrink-0">
+     <p id="display-marquee" class="marquee whitespace-nowrap text-yellow-400 font-medium">Selamat datang di layanan kami. Harap menunggu nomor antrian Anda dipanggil.</p>
+    </div>
+   </div><!-- COUNTER TAB -->
+   <div id="panel-counter" class="hidden flex-1 flex flex-col p-6 gap-4">
+    <div class="flex items-center gap-4 flex-wrap"><label class="text-sm text-slate-400 font-medium">Pilih Loket:</label> <select id="counter-select" onchange="updateCounterView()" class="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white"> <option value="Loket 1">Loket 1</option> <option value="Loket 2">Loket 2</option> <option value="Loket 3">Loket 3</option> <option value="Loket 4">Loket 4</option> <option value="Loket 5">Loket 5</option> </select> <label class="text-sm text-slate-400 font-medium ml-4">Kategori:</label> <select id="counter-category" class="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white"> <option value="">Semua</option> </select>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+     <div class="bg-slate-800 rounded-2xl p-6 flex flex-col items-center justify-center border border-slate-700">
+      <p class="text-slate-400 text-sm">Sedang Dilayani</p>
+      <p id="counter-current" class="mono text-5xl font-bold text-green-400 my-3">---</p>
+      <p id="counter-current-cat" class="text-slate-400 text-sm"></p>
+     </div>
+     <div class="bg-slate-800 rounded-2xl p-6 flex flex-col items-center justify-center border border-slate-700">
+      <p class="text-slate-400 text-sm">Menunggu</p>
+      <p id="counter-waiting" class="mono text-5xl font-bold text-yellow-400 my-3">0</p>
+      <p class="text-slate-400 text-sm">antrian</p>
+     </div>
+     <div class="bg-slate-800 rounded-2xl p-6 flex flex-col items-center justify-center border border-slate-700">
+      <p class="text-slate-400 text-sm">Selesai Hari Ini</p>
+      <p id="counter-done" class="mono text-5xl font-bold text-blue-400 my-3">0</p>
+      <p class="text-slate-400 text-sm">terlayani</p>
+     </div>
+    </div>
+    <div class="flex gap-3 flex-wrap"><button onclick="callNext()" class="bg-blue-600 hover:bg-blue-700 px-8 py-4 rounded-xl font-bold text-lg flex items-center gap-2 transition-all"> <i data-lucide="phone-forwarded" class="w-5 h-5"></i> Panggil Berikutnya </button> <button onclick="recallCurrent()" class="bg-amber-600 hover:bg-amber-700 px-6 py-4 rounded-xl font-bold flex items-center gap-2 transition-all"> <i data-lucide="repeat" class="w-5 h-5"></i> Panggil Ulang </button> <button onclick="completeCurrent()" class="bg-green-600 hover:bg-green-700 px-6 py-4 rounded-xl font-bold flex items-center gap-2 transition-all"> <i data-lucide="check-circle" class="w-5 h-5"></i> Selesai </button>
+    </div>
+    <div id="counter-status" class="hidden text-sm text-center py-2 rounded-lg"></div>
+   </div><!-- ADMIN TAB -->
+   <div id="panel-admin" class="hidden flex-1 flex flex-col p-6 gap-4 overflow-auto">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+     <h2 class="text-xl font-bold">Dashboard Admin</h2>
+     <div class="flex gap-2"><button onclick="exportCSV()" class="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all"> <i data-lucide="download" class="w-4 h-4"></i> Ekspor CSV </button> <button onclick="confirmReset()" id="btn-reset" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all"> <i data-lucide="trash-2" class="w-4 h-4"></i> Reset Antrian </button> <button onclick="doReset()" id="btn-reset-confirm" class="hidden bg-red-800 hover:bg-red-900 px-4 py-2 rounded-lg text-sm font-semibold transition-all"> Konfirmasi Reset? </button>
+     </div>
+    </div><!-- Stats Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+     <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+      <p class="text-slate-400 text-xs">Total Antrian</p>
+      <p id="stat-total" class="mono text-2xl font-bold text-white mt-1">0</p>
+     </div>
+     <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+      <p class="text-slate-400 text-xs">Terlayani</p>
+      <p id="stat-served" class="mono text-2xl font-bold text-green-400 mt-1">0</p>
+     </div>
+     <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+      <p class="text-slate-400 text-xs">Menunggu</p>
+      <p id="stat-waiting" class="mono text-2xl font-bold text-yellow-400 mt-1">0</p>
+     </div>
+     <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+      <p class="text-slate-400 text-xs">Rata-rata Tunggu</p>
+      <p id="stat-avg" class="mono text-2xl font-bold text-blue-400 mt-1">-</p>
+     </div>
+    </div><!-- Chart -->
+    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 flex-1 min-h-[200px]">
+     <p class="text-sm text-slate-400 mb-3 font-medium">Grafik Kunjungan Per Jam</p>
+     <svg id="chart-svg" class="w-full h-full" viewbox="0 0 600 200" preserveaspectratio="xMidYMid meet"></svg>
+    </div><!-- Category Management -->
+    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700">
+     <p class="text-sm text-slate-400 mb-3 font-medium">Kelola Kategori Layanan</p>
+     <div id="admin-categories" class="flex flex-wrap gap-2 mb-3"></div>
+     <div class="flex gap-2"><input id="new-cat-code" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm w-16" placeholder="Kode" maxlength="3"> <input id="new-cat-name" class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm flex-1" placeholder="Nama Kategori"> <button onclick="addCategory()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-semibold transition-all">Tambah</button>
+     </div>
+    </div><!-- Visitor Data Table -->
+    <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 flex-1 overflow-auto">
+     <p class="text-sm text-slate-400 mb-3 font-medium">Data Pengunjung Harian</p>
+     <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+       <thead class="border-b border-slate-600">
+        <tr class="text-left text-slate-400">
+         <th class="px-3 py-2">No Antrian</th>
+         <th class="px-3 py-2">Nama</th>
+         <th class="px-3 py-2">HP/WA</th>
+         <th class="px-3 py-2">Alamat</th>
+         <th class="px-3 py-2">Asal Sekolah</th>
+         <th class="px-3 py-2">Status</th>
+        </tr>
+       </thead>
+       <tbody id="admin-visitor-table">
+       </tbody>
+      </table>
+     </div>
+    </div>
+   </div>
+   <script>
+    // --- State ---
+    let allData = [];
+    let categories = JSON.parse(localStorage.getItem('sq_categories') || 'null') || [
+      { code: 'A', name: 'Aduan', color: '#3b82f6' },
+      { code: 'B', name: 'Pendaftaran', color: '#10b981' },
+      { code: 'C', name: 'Verifikasi', color: '#f59e0b' },
+      { code: 'D', name: 'Daftar Ulang', color: '#8b5cf6' }
+    ];
+    let currentCall = null; // last called ticket for display
+
+    const defaultConfig = {
+      institution_name: 'WEB LAYANAN SPMB 2026',
+      school_name: 'SMA NEGERI 3 LUWU',
+      running_text: 'Selamat datang di layanan kami. Harap menunggu nomor antrian Anda dipanggil.',
+      primary_color: '#1e40af',
+      surface_color: '#1e293b',
+      text_color: '#e2e8f0',
+      accent_color: '#3b82f6',
+      secondary_color: '#0f172a',
+      font_family: 'Plus Jakarta Sans',
+      font_size: 16
+    };
+
+    // --- Element SDK ---
+    window.elementSdk.init({
+      defaultConfig,
+      onConfigChange: async (config) => {
+        const inst = config.institution_name || defaultConfig.institution_name;
+        const rt = config.running_text || defaultConfig.running_text;
+        const font = config.font_family || defaultConfig.font_family;
+        const size = config.font_size || defaultConfig.font_size;
+        const bg = config.primary_color || defaultConfig.primary_color;
+        const surface = config.surface_color || defaultConfig.surface_color;
+        const txt = config.text_color || defaultConfig.text_color;
+        const accent = config.accent_color || defaultConfig.accent_color;
+        const secondary = config.secondary_color || defaultConfig.secondary_color;
+
+        document.getElementById('kiosk-title').textContent = inst;
+        document.getElementById('display-title').textContent = inst;
+        document.getElementById('print-inst').textContent = inst;
+        document.getElementById('school-name').textContent = config.school_name || defaultConfig.school_name;
+        document.getElementById('display-marquee').textContent = rt;
+
+        document.body.style.fontFamily = `${font}, Plus Jakarta Sans, sans-serif`;
+        document.body.style.fontSize = size + 'px';
+        document.body.style.background = secondary;
+        document.querySelectorAll('.bg-slate-800').forEach(el => el.style.background = surface);
+        document.querySelectorAll('.text-blue-400').forEach(el => el.style.color = accent);
+        document.querySelectorAll('nav').forEach(el => el.style.background = secondary);
+      },
+      mapToCapabilities: (config) => ({
+        recolorables: [
+          { get: () => config.secondary_color || defaultConfig.secondary_color, set: (v) => { config.secondary_color = v; window.elementSdk.setConfig({ secondary_color: v }); } },
+          { get: () => config.surface_color || defaultConfig.surface_color, set: (v) => { config.surface_color = v; window.elementSdk.setConfig({ surface_color: v }); } },
+          { get: () => config.text_color || defaultConfig.text_color, set: (v) => { config.text_color = v; window.elementSdk.setConfig({ text_color: v }); } },
+          { get: () => config.accent_color || defaultConfig.accent_color, set: (v) => { config.accent_color = v; window.elementSdk.setConfig({ accent_color: v }); } },
+          { get: () => config.primary_color || defaultConfig.primary_color, set: (v) => { config.primary_color = v; window.elementSdk.setConfig({ primary_color: v }); } }
+        ],
+        borderables: [],
+        fontEditable: { get: () => config.font_family || defaultConfig.font_family, set: (v) => { config.font_family = v; window.elementSdk.setConfig({ font_family: v }); } },
+        fontSizeable: { get: () => config.font_size || defaultConfig.font_size, set: (v) => { config.font_size = v; window.elementSdk.setConfig({ font_size: v }); } }
+      }),
+      mapToEditPanelValues: (config) => new Map([
+        ['institution_name', config.institution_name || defaultConfig.institution_name],
+        ['school_name', config.school_name || defaultConfig.school_name],
+        ['running_text', config.running_text || defaultConfig.running_text]
+      ])
+    });
+
+    // --- Data SDK ---
+    const dataHandler = {
+      onDataChanged(data) {
+        allData = data;
+        renderAll();
+      }
+    };
+    (async () => {
+      const r = await window.dataSdk.init(dataHandler);
+      if (!r.isOk) console.error('Data SDK init failed');
+    })();
+
+    // --- Tab Navigation ---
+    function switchTab(tab) {
+      ['kiosk','display','counter','admin'].forEach(t => {
+        document.getElementById('panel-' + t).classList.toggle('hidden', t !== tab);
+        document.getElementById('tab-' + t).className = t === tab
+          ? 'tab-active px-4 py-2 rounded-lg text-sm font-semibold transition-all'
+          : 'tab-inactive px-4 py-2 rounded-lg text-sm font-semibold transition-all';
+      });
+      if (tab === 'display' && currentCall) announceCall(currentCall);
+    }
+
+    // --- Categories ---
+    function saveCategories() { localStorage.setItem('sq_categories', JSON.stringify(categories)); }
+    function renderCategories() {
+      // Kiosk
+      const kc = document.getElementById('kiosk-categories');
+      kc.innerHTML = categories.map(c => `
+        <button onclick="startTicketProcess('${c.code}')" class="rounded-2xl p-6 text-center font-bold text-xl transition-all hover:scale-105 active:scale-95" style="background:${c.color}20; border:2px solid ${c.color}; color:${c.color}">
+          <span class="block text-4xl mb-2">${c.code}</span>${c.name}
+        </button>`).join('');
+      // Counter category filter
+      const cc = document.getElementById('counter-category');
+      cc.innerHTML = '<option value="">Semua</option>' + categories.map(c => `<option value="${c.code}">${c.code} - ${c.name}</option>`).join('');
+      // Admin list
+      const ac = document.getElementById('admin-categories');
+      ac.innerHTML = categories.map((c, i) => `
+        <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium" style="background:${c.color}30; color:${c.color}; border:1px solid ${c.color}">
+          ${c.code} - ${c.name}
+          <button onclick="removeCategory(${i})" class="ml-1 hover:text-red-400">&times;</button>
+        </span>`).join('');
+    }
+    function addCategory() {
+      const code = document.getElementById('new-cat-code').value.trim().toUpperCase();
+      const name = document.getElementById('new-cat-name').value.trim();
+      if (!code || !name) return;
+      if (categories.find(c => c.code === code)) return showStatus('counter-status', 'Kode sudah ada', 'red');
+      const colors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899'];
+      categories.push({ code, name, color: colors[categories.length % colors.length] });
+      saveCategories(); renderCategories();
+      document.getElementById('new-cat-code').value = '';
+      document.getElementById('new-cat-name').value = '';
+    }
+    function removeCategory(i) { categories.splice(i, 1); saveCategories(); renderCategories(); }
+
+    // --- Kiosk: Take Ticket ---
+    let currentCategoryCode = null;
+    let currentVisitorData = null;
+
+    function startTicketProcess(catCode) {
+      currentCategoryCode = catCode;
+      currentVisitorData = null;
+      document.getElementById('kiosk-step-1').classList.add('hidden');
+      document.getElementById('kiosk-step-2').classList.remove('hidden');
+      document.getElementById('form-name').value = '';
+      document.getElementById('form-phone').value = '';
+      document.getElementById('form-address').value = '';
+      document.getElementById('form-school').value = '';
+      document.getElementById('form-error').classList.add('hidden');
+    }
+
+    function backToCategories() {
+      document.getElementById('kiosk-step-1').classList.remove('hidden');
+      document.getElementById('kiosk-step-2').classList.add('hidden');
+      document.getElementById('kiosk-step-3').classList.add('hidden');
+      currentCategoryCode = null;
+    }
+
+    function submitVisitorData() {
+      const name = document.getElementById('form-name').value.trim();
+      const phone = document.getElementById('form-phone').value.trim();
+      const address = document.getElementById('form-address').value.trim();
+      const school = document.getElementById('form-school').value.trim();
+      const errEl = document.getElementById('form-error');
+
+      if (!name || !phone || !address || !school) {
+        errEl.textContent = 'Semua field harus diisi!';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      if (!/^08\d{8,11}$/.test(phone.replace(/\D/g, '08'))) {
+        errEl.textContent = 'Nomor HP/WA tidak valid!';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      currentVisitorData = { name, phone, address, school };
+      takeTicket(currentCategoryCode);
+    }
+
+    async function takeTicket(catCode) {
+      if (allData.length >= 999) { showStatus('counter-status', 'Batas antrian tercapai (999)', 'red'); return; }
+      const cat = categories.find(c => c.code === catCode);
+      const todayTickets = allData.filter(d => d.category === catCode && isToday(d.created_at));
+      const num = todayTickets.length + 1;
+      const ticketNumber = catCode + String(num).padStart(3, '0');
+      const result = await window.dataSdk.create({
+        ticket_number: ticketNumber,
+        category: catCode,
+        status: 'waiting',
+        counter: '',
+        visitor_name: currentVisitorData ? currentVisitorData.name : '',
+        visitor_phone: currentVisitorData ? currentVisitorData.phone : '',
+        visitor_address: currentVisitorData ? currentVisitorData.address : '',
+        visitor_school: currentVisitorData ? currentVisitorData.school : '',
+        created_at: new Date().toISOString(),
+        called_at: '',
+        completed_at: ''
+      });
+      if (result.isOk) {
+        document.getElementById('kiosk-step-1').classList.add('hidden');
+        document.getElementById('kiosk-step-2').classList.add('hidden');
+        document.getElementById('kiosk-step-3').classList.remove('hidden');
+        document.getElementById('kiosk-ticket-number').textContent = ticketNumber;
+        document.getElementById('kiosk-ticket-category').textContent = cat ? cat.name : catCode;
+        document.getElementById('kiosk-ticket-name').textContent = currentVisitorData ? `Nama: ${currentVisitorData.name}` : '';
+        document.getElementById('print-number').textContent = ticketNumber;
+        document.getElementById('print-cat').textContent = cat ? cat.name : catCode;
+        document.getElementById('print-name').textContent = currentVisitorData ? currentVisitorData.name : '';
+        document.getElementById('print-time').textContent = new Date().toLocaleString('id-ID');
+        setTimeout(() => backToCategories(), 10000);
+      }
+    }
+    function printTicket() {
+      const modal = document.getElementById('ticket-preview-modal');
+      const countdownEl = document.getElementById('countdown-num');
+      
+      // Update preview data
+      document.getElementById('preview-inst').textContent = window.elementSdk.config.institution_name || 'WEB LAYANAN SPMB 2026';
+      document.getElementById('preview-school').textContent = window.elementSdk.config.school_name || 'SMA NEGERI 3 LUWU';
+      document.getElementById('preview-number').textContent = document.getElementById('kiosk-ticket-number').textContent;
+      document.getElementById('preview-cat').textContent = document.getElementById('kiosk-ticket-category').textContent;
+      document.getElementById('preview-name').textContent = document.getElementById('kiosk-ticket-name').textContent;
+      document.getElementById('preview-time').textContent = new Date().toLocaleString('id-ID');
+      
+      // Show modal
+      modal.classList.remove('hidden');
+      let countdown = 15;
+      
+      const timer = setInterval(() => {
+        countdown--;
+        countdownEl.textContent = countdown;
+        if (countdown <= 0) {
+          clearInterval(timer);
+          modal.classList.add('hidden');
+          doPrint();
+        }
+      }, 1000);
+    }
+    
+    function skipPreview() {
+      document.getElementById('ticket-preview-modal').classList.add('hidden');
+      doPrint();
+    }
+    
+    function doPrint() {
+      const pa = document.getElementById('print-area');
+      pa.classList.remove('hidden');
+      window.print();
+      setTimeout(() => pa.classList.add('hidden'), 500);
+    }
+
+    // --- Counter: Call Next ---
+    async function callNext() {
+      const counter = document.getElementById('counter-select').value;
+      const catFilter = document.getElementById('counter-category').value;
+      let queue = allData.filter(d => d.status === 'waiting' && isToday(d.created_at));
+      if (catFilter) queue = queue.filter(d => d.category === catFilter);
+      queue.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      if (queue.length === 0) { showStatus('counter-status', 'Tidak ada antrian menunggu', 'yellow'); return; }
+      // Complete current if any
+      const serving = allData.find(d => d.status === 'called' && d.counter === counter && isToday(d.created_at));
+      if (serving) {
+        const updated = { ...serving, status: 'completed', completed_at: new Date().toISOString() };
+        await window.dataSdk.update(updated);
+      }
+      const next = queue[0];
+      const updated = { ...next, status: 'called', counter, called_at: new Date().toISOString() };
+      const r = await window.dataSdk.update(updated);
+      if (r.isOk) {
+        currentCall = { number: next.ticket_number, counter };
+        announceCall(currentCall);
+        showStatus('counter-status', `Memanggil ${next.ticket_number} ke ${counter}`, 'green');
+      }
+    }
+    function recallCurrent() {
+      if (currentCall) announceCall(currentCall);
+    }
+    async function completeCurrent() {
+      const counter = document.getElementById('counter-select').value;
+      const serving = allData.find(d => d.status === 'called' && d.counter === counter && isToday(d.created_at));
+      if (!serving) { showStatus('counter-status', 'Tidak ada yang sedang dilayani', 'yellow'); return; }
+      const updated = { ...serving, status: 'completed', completed_at: new Date().toISOString() };
+      const r = await window.dataSdk.update(updated);
+      if (r.isOk) showStatus('counter-status', `${serving.ticket_number} selesai dilayani`, 'green');
+    }
+
+    // --- Display: Announce ---
+    function announceCall(call) {
+      playDingDong();
+      setTimeout(() => {
+        const visitor = allData.find(d => d.ticket_number === call.number);
+        const visitorName = visitor && visitor.visitor_name ? visitor.visitor_name : 'Pengunjung';
+        const utterance = new SpeechSynthesisUtterance(`Nama ${visitorName}, Nomor antrian ${call.number.split('').join(' ')}, silakan menuju ${call.counter}`);
+        utterance.lang = 'id-ID';
+        utterance.rate = 0.9;
+        speechSynthesis.speak(utterance);
+      }, 1500);
+    }
+    function playDingDong() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const playNote = (freq, start, dur) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.4, ctx.currentTime + start);
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + start + dur);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(ctx.currentTime + start);
+          osc.stop(ctx.currentTime + start + dur);
+        };
+        playNote(880, 0, 0.5);
+        playNote(660, 0.5, 0.7);
+      } catch (e) {}
+    }
+
+    // --- Admin ---
+    function confirmReset() {
+      document.getElementById('btn-reset').classList.add('hidden');
+      document.getElementById('btn-reset-confirm').classList.remove('hidden');
+      setTimeout(() => {
+        document.getElementById('btn-reset').classList.remove('hidden');
+        document.getElementById('btn-reset-confirm').classList.add('hidden');
+      }, 4000);
+    }
+    async function doReset() {
+      for (const d of allData.filter(d => isToday(d.created_at))) {
+        await window.dataSdk.delete(d);
+      }
+      document.getElementById('btn-reset').classList.remove('hidden');
+      document.getElementById('btn-reset-confirm').classList.add('hidden');
+    }
+    function exportCSV() {
+      const today = allData.filter(d => isToday(d.created_at));
+      if (!today.length) return;
+      let csv = 'No Antrian,Kategori,Status,Loket,Waktu Ambil,Waktu Panggil,Waktu Selesai\n';
+      today.forEach(d => {
+        csv += `${d.ticket_number},${d.category},${d.status},${d.counter},${d.created_at},${d.called_at},${d.completed_at}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `antrian_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+    }
+
+    // --- Render All ---
+    function renderAll() {
+      const today = allData.filter(d => isToday(d.created_at));
+      // Counter view
+      updateCounterView();
+      // Display
+      const called = today.filter(d => d.status === 'called').sort((a, b) => new Date(b.called_at) - new Date(a.called_at));
+      if (called.length > 0) {
+        const latest = called[0];
+        document.getElementById('display-number').textContent = latest.ticket_number;
+        document.getElementById('display-counter').textContent = latest.counter;
+        currentCall = { number: latest.ticket_number, counter: latest.counter };
+      }
+      const dh = document.getElementById('display-history');
+      dh.innerHTML = called.slice(1, 5).map(d => `<span class="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 mono text-lg">${d.ticket_number} → ${d.counter}</span>`).join('');
+      // Admin stats
+      document.getElementById('stat-total').textContent = today.length;
+      document.getElementById('stat-served').textContent = today.filter(d => d.status === 'completed').length;
+      document.getElementById('stat-waiting').textContent = today.filter(d => d.status === 'waiting').length;
+      // Avg wait
+      const completed = today.filter(d => d.status === 'completed' && d.called_at && d.created_at);
+      if (completed.length) {
+        const avgMs = completed.reduce((sum, d) => sum + (new Date(d.called_at) - new Date(d.created_at)), 0) / completed.length;
+        document.getElementById('stat-avg').textContent = Math.round(avgMs / 60000) + ' mnt';
+      }
+      // Chart
+      renderChart(today);
+      // Visitor table
+      renderVisitorTable(today);
+    }
+
+    function renderVisitorTable(today) {
+      const tbody = document.getElementById('admin-visitor-table');
+      if (today.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-slate-400 py-4">Belum ada data pengunjung</td></tr>';
+        return;
+      }
+      tbody.innerHTML = today.map(d => `
+        <tr class="border-b border-slate-700 hover:bg-slate-700/50">
+          <td class="px-3 py-2 mono font-semibold">${d.ticket_number}</td>
+          <td class="px-3 py-2">${d.visitor_name || '-'}</td>
+          <td class="px-3 py-2">${d.visitor_phone || '-'}</td>
+          <td class="px-3 py-2 text-xs">${d.visitor_address || '-'}</td>
+          <td class="px-3 py-2 text-xs">${d.visitor_school || '-'}</td>
+          <td class="px-3 py-2"><span class="px-2 py-1 rounded text-xs ${d.status === 'waiting' ? 'bg-yellow-900 text-yellow-400' : d.status === 'called' ? 'bg-blue-900 text-blue-400' : 'bg-green-900 text-green-400'}">${d.status === 'waiting' ? 'Menunggu' : d.status === 'called' ? 'Dipanggil' : 'Selesai'}</span></td>
+        </tr>`).join('');
+    }
+    function updateCounterView() {
+      const today = allData.filter(d => isToday(d.created_at));
+      const counter = document.getElementById('counter-select').value;
+      const serving = today.find(d => d.status === 'called' && d.counter === counter);
+      document.getElementById('counter-current').textContent = serving ? serving.ticket_number : '---';
+      document.getElementById('counter-current-cat').textContent = serving ? (categories.find(c => c.code === serving.category)?.name || '') : '';
+      const catFilter = document.getElementById('counter-category').value;
+      let waiting = today.filter(d => d.status === 'waiting');
+      if (catFilter) waiting = waiting.filter(d => d.category === catFilter);
+      document.getElementById('counter-waiting').textContent = waiting.length;
+      document.getElementById('counter-done').textContent = today.filter(d => d.status === 'completed' && d.counter === counter).length;
+    }
+    function renderChart(today) {
+      const hours = Array(24).fill(0);
+      today.forEach(d => { const h = new Date(d.created_at).getHours(); hours[h]++; });
+      const max = Math.max(...hours, 1);
+      const svg = document.getElementById('chart-svg');
+      const barW = 20, gap = 5, startX = 30, startY = 180;
+      let bars = '';
+      for (let i = 0; i < 24; i++) {
+        const h = (hours[i] / max) * 150;
+        const x = startX + i * (barW + gap);
+        bars += `<rect x="${x}" y="${startY - h}" width="${barW}" height="${h}" rx="3" fill="#3b82f6" opacity="0.8"/>`;
+        if (i % 3 === 0) bars += `<text x="${x + barW/2}" y="${startY + 14}" text-anchor="middle" fill="#94a3b8" font-size="9">${String(i).padStart(2,'0')}</text>`;
+      }
+      svg.innerHTML = bars;
+    }
+
+    // --- Helpers ---
+    function isToday(iso) {
+      if (!iso) return false;
+      return new Date(iso).toDateString() === new Date().toDateString();
+    }
+    function showStatus(id, msg, color) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.className = `text-sm text-center py-2 rounded-lg bg-${color === 'green' ? 'green' : color === 'red' ? 'red' : 'yellow'}-900/30 text-${color === 'green' ? 'green' : color === 'red' ? 'red' : 'yellow'}-400`;
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 3000);
+    }
+
+    // --- Init ---
+    renderCategories();
+    lucide.createIcons();
+  </script>
+  </div>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a08bcf9ecfe8ce4e',t:'MTc4MDk2Mjc1NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
